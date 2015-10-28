@@ -3,7 +3,7 @@ import scrapy, json
 
 from cnfish.items import CnfishItem
 
-class ZiliaokuSpider(scrapy.Spider):
+class ZiliaokuSpider(scrapy.CrawlSpider):
     name = "ziliaoku"
     allowed_domains = ["cnfish.cn"]
     start_urls = (
@@ -13,8 +13,12 @@ class ZiliaokuSpider(scrapy.Spider):
         'http://www.cnfish.cn/ZLK/WaterListJinYu.aspx?TypeId=469762048',
         'http://www.cnfish.cn/ZLK/WaterListJinLi.aspx?TypeId=536870912',
     )
+    rules = (
+        # 提取匹配 'item.php' 的链接并使用spider的parse_item方法进行分析
+        Rule(LinkExtractor(allow=('item\.php', )), callback='parse_item'),
+    )
 
-    def parse(self, response):
+    def parse_item(self, response):
         if response.xpath('//*[@id="ctl00_ContentPlaceHolder1_div_content"]/p[1]/img/@src').extract():
             item = CnfishItem()
 
@@ -35,7 +39,7 @@ class ZiliaokuSpider(scrapy.Spider):
             line = json.dumps(dict(item), ensure_ascii=False) + "\n"
             print line
             yield item
-        next_page = response.xpath('//*[@class="chanpin_name"]/@href').extract()
-        if next_page:
-            for i in next_page:
-                yield scrapy.Request('http://www.cnfish.cn/' + i, self.parse)
+        # next_page = response.xpath('//*[@class="chanpin_name"]/@href').extract()
+        # if next_page:
+        #     for i in next_page:
+        #         yield scrapy.Request('http://www.cnfish.cn/' + i, self.parse)
