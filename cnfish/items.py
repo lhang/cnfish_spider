@@ -11,9 +11,9 @@ import scrapy
 class CnfishItem(scrapy.Item):
     # define the fields for your item here like:
     # name = scrapy.Field()
-    name = scrapy.Field()
-    imgurl = scrapy.Field()
-    img = scrapy.Field()
+    crawl_from= scrapy.Field()
+    title = scrapy.Field()
+    article_info = scrapy.Field()
     article = scrapy.Field()
-    tag1 = scrapy.Field()
-    tag2 = scrapy.Field()
+    imgurl = scrapy.Field()
+    tag = scrapy.Field()

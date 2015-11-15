@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
-import scrapy, json
-
+import scrapy, json, pymongo
+from scrapy.linkextractors import LinkExtractor
+from scrapy.spiders import CrawlSpider, Rule
+from scrapy.http import Response
 from cnfish.items import CnfishItem
+from cnfish import settings
 
-class ZiliaokuSpider(scrapy.CrawlSpider):
-    name = "ziliaoku"
+class ZiliaokuSpider(CrawlSpider):
+    name = "cnfish"
     allowed_domains = ["cnfish.cn"]
     start_urls = (
         'http://www.cnfish.cn/ZLK/WaterListMore.aspx?TypeId=268435456',
@@ -15,31 +18,40 @@ class ZiliaokuSpider(scrapy.CrawlSpider):
     )
     rules = (
         # 提取匹配 'item.php' 的链接并使用spider的parse_item方法进行分析
-        Rule(LinkExtractor(allow=('item\.php', )), callback='parse_item'),
+        Rule(LinkExtractor(allow='/htm/news/'), callback='parse_item', process_links='link_filter', follow=True),
+        Rule(LinkExtractor(allow='/ZLK/'), follow=True, process_links='link_filter'),
     )
 
+
+    def __init__(self, category=None, *args, **kwargs):
+        super(ZiliaokuSpider, self).__init__(*args, **kwargs)
+        self.mongo_url = settings.MONGO_URI
+        self.mongo_db = settings.MONGO_DB
+        self.client = pymongo.MongoClient(self.mongo_url)
+        self.db = self.client[self.mongo_db]
+
+    def closed():
+        self.client.close()
+
+
+    def link_filter(self, links):
+        ret = []
+        for link in links:
+            if link and self.db['CnfishItem'].find_one({"crawl_from": link.url}):
+                print '丢弃', link.url
+            else:
+                ret.append(link)
+        return ret
+
     def parse_item(self, response):
-        if response.xpath('//*[@id="ctl00_ContentPlaceHolder1_div_content"]/p[1]/img/@src').extract():
+        type_str = [u'淡水热带鱼', u'金鱼', u'锦鲤', u'海水资料库', u'水草']
+        if response.xpath('//*[@id="ctl00_ContentPlaceHolder1_HyperLink7"]/text()').extract()[0] in type_str:
             item = CnfishItem()
-
-            page = response.xpath('//*[@id="ctl00_ContentPlaceHolder1_div_content"]')
-
-            for i in page.xpath('//p'):
-                if i.xpath('//img/@src').extract():
-                    pass
-                else:
-                        if item.get('article'):
-                            item['article'] = item.get('article') + i.xpath('//p/text()').extract()[0].encode('utf-8')
-                        else:
-                            item['article'] = i.xpath('//p/text()').extract()[0].encode('utf-8')
-            item['name'] = response.xpath('//div[@id="ctl00_ContentPlaceHolder1_div_NewsTitle"]/text()').extract()[0].encode('utf-8')
-            item['imgurl'] = response.xpath('//*[@id="ctl00_ContentPlaceHolder1_div_content"]/p[1]/img/@src').extract()[0].encode('utf-8')
-            item['tag1'] = response.xpath('//*[@id="ctl00_ContentPlaceHolder1_HyperLink7"]/text()').extract()[0].encode('utf-8')
-            item['tag2'] = response.xpath('//*[@id="ctl00_ContentPlaceHolder1_HyperLink4"]/text()').extract()[0].encode('utf-8')
-            line = json.dumps(dict(item), ensure_ascii=False) + "\n"
-            print line
+            item['crawl_from'] = response.url
+            item['title'] = response.xpath('//*[@id="ctl00_ContentPlaceHolder1_div_NewsTitle"]/text()').extract()
+            item['article_info'] = response.xpath('//div[@class="news_info"]/text()').extract()
+            item['article'] = response.xpath('//*[@class="dianpu_intro"]//p/text()').extract()
+            item['imgurl'] = response.xpath('//*[@id="ctl00_ContentPlaceHolder1_div_content"]//img/@src').extract()
+            item['tag'] = response.xpath('//*[@id="ctl00_ContentPlaceHolder1_HyperLink7"]/text()').extract()
+            item['tag'] += response.xpath('//*[@id="ctl00_ContentPlaceHolder1_HyperLink4"]/text()').extract()
             yield item
-        # next_page = response.xpath('//*[@class="chanpin_name"]/@href').extract()
-        # if next_page:
-        #     for i in next_page:
-        #         yield scrapy.Request('http://www.cnfish.cn/' + i, self.parse)
